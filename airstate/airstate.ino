@@ -11,7 +11,7 @@ SoftwareSerial wifi(2, 3); // RX, TX
 String POM = "Aussen";
 String IP = "191.233.85.165";
 String SSID = "rayNet";
-String PW = "rton-hhw3-931b-o6c2";
+String PW = "xton-hhw3-931b-o6c2";
 String cmd = "";
 float h = 0.00;
 float t = 0.00;
