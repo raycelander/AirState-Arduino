@@ -1,5 +1,4 @@
 #include <SI7021.h>
-//#include <OneWire.h>
 #include <SoftwareSerial.h>
 #include <LiquidCrystal_I2C.h>
 #include <Wire.h>
@@ -9,7 +8,6 @@
 #include <Adafruit_BMP085_U.h>
 
 SI7021 sensor;
-//OneWire oneWire(ONE_WIRE_BUS);
 LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 SoftwareSerial wifi(2, 3); // RX, TX
 Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
@@ -18,12 +16,15 @@ const int powerDHT22 = 12;
 String POM = "Aussen";
 String IP = "191.233.85.165";
 String SSID = "rayNet";
-String PW = "xton-hhw3-931b-o6c2";
+String PW = "rton-hhw3-931b-o6c2";
 String cmd = "";
 float h = 0.00;
 float t = 0.00;
 float hpa = 0.00;
+float hum = 0.00;
 String status = "";
+si7021_env data;
+boolean isDataSent = false;
 
 void setup(){
   Wire.begin();
@@ -120,9 +121,9 @@ boolean connectWiFi() {
 boolean readDatas(){
   sensor.begin();
   lcdPrint("measuring...");
-  si7021_env data = sensor.getHumidityAndTemperature();
+  data = sensor.getHumidityAndTemperature();
   t = data.celsiusHundredths/float(100);
-  float hum = data.humidityBasisPoints;
+  hum = data.humidityBasisPoints;
   h = int(round(float(hum)/float(100)));
   lcdPrint("measuring done");
   return true;
@@ -154,7 +155,7 @@ boolean sendDatas() {
   delay(2000);
   Serial.println("AT+CIPSEND=4," + String(cmd.length()));
   Serial.flush();
-  boolean isDataSent = false;
+  isDataSent = false;
   if (Serial.find(">")) {
     lcdPrint("con ready. sending.");
     Serial.println(cmd);
