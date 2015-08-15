@@ -1,35 +1,43 @@
+#include <MemoryFree.h>
 #include <SI7021.h>
 #include <SoftwareSerial.h>
-#include <LiquidCrystal_I2C.h>
 #include <Wire.h>
+#include <SPI.h>
+#include <SSD1306_text.h>
+#include <stdlib.h>
 #include <math.h>
-#define ONE_WIRE_BUS 2
-#include <Adafruit_Sensor.h>
-#include <Adafruit_BMP085_U.h>
 
 SI7021 sensor;
-LiquidCrystal_I2C lcd(0x3F, 2, 1, 0, 4, 5, 6, 7, 3, POSITIVE);
 SoftwareSerial wifi(2, 3); // RX, TX
-Adafruit_BMP085_Unified bmp = Adafruit_BMP085_Unified(10085);
+si7021_env data;
 
-const int powerDHT22 = 12;
-String POM = "Aussen";
-String IP = "191.233.85.165";
-String SSID = "rayNet";
-String PW = "rton-hhw3-931b-o6c2";
+#define OLED_DATA 9
+#define OLED_CLK 10
+#define OLED_DC 11
+#define OLED_CS 12
+#define OLED_RST 13
+SSD1306_text oled(OLED_DATA, OLED_CLK, OLED_DC, OLED_RST, OLED_CS);
+
+const String POM = "Aussen";
+const String IP = "191.233.85.165";
+const String SSID = "rayNet";
+const String PW = "rton-hhw3-931b-o6c2";
+
 String cmd = "";
+int temp = 0;
 float h = 0.00;
 float t = 0.00;
 float hpa = 0.00;
 float hum = 0.00;
 String status = "";
-si7021_env data;
 boolean isDataSent = false;
+boolean isSensorOk = false;
 
 void setup(){
+  oled.init();
+  oled.clear();   
   Wire.begin();
-  lcdPrint("Starting up...");
-  lcd.begin(20, 4);
+  lcdPrint("Airstate 1.0");
 }
 
 void loop() {
@@ -37,11 +45,8 @@ void loop() {
   Serial.setTimeout(15000);
 
   if (checkWiFiModule()){
-      if (connectWiFi()){
+    if (connectWiFi()){
         delay(1000);
-        if (bmp.begin()){
-          readPressure();
-        }
         if (readDatas()){
           if (sendDatas()){
             printSucc();
@@ -61,34 +66,22 @@ void loop() {
   }
 }
 
-void readPressure(){
-  lcdPrint("reading hpa");
-  delay(1000);
-  sensors_event_t event;
-  bmp.getEvent(&event);
- 
-  /* Display the results (barometric pressure is measure in hPa) */
-  if (event.pressure)  {
-    /* Display atmospheric pressure in hPa */
-    hpa = event.pressure; 
-  }  else  {
-    hpa = 0;
-  }
-}
-
 void printErr(String message){
     lcdPrintLine(message,0,0);
-    lcdPrintLine("retrying..",1,0);
     Serial.end();
     delay(1000);
 }
 
 void printSucc(){
-  lcdPrint("");
-  lcdPrintLine("Temp: " + String(t),0,0);
-  lcdPrintLine("Hum : " + String(h),1,0);
-  lcdPrintLine("hPa: " + String(hpa),2,0);
-  lcdPrintLine(status,3,0);
+  oled.clear();
+  oled.setCursor(2, 0);        // move cursor to row 3, pixel column 10
+  oled.setTextSize(2, 2);       // 3X character size, spacing 5 pixels
+  oled.print(String(t) + " C");
+  oled.setCursor(5, 0);  
+  oled.print(String(h) + " %");
+  oled.setTextSize(1,1);
+  oled.setCursor(0,0);
+  oled.print("Ram:" + String(freeMemory()) + " (" + status + ")");
 }
 
 boolean checkWiFiModule(){
@@ -119,13 +112,28 @@ boolean connectWiFi() {
 }
 
 boolean readDatas(){
-  sensor.begin();
-  lcdPrint("measuring...");
-  data = sensor.getHumidityAndTemperature();
-  t = data.celsiusHundredths/float(100);
-  hum = data.humidityBasisPoints;
-  h = int(round(float(hum)/float(100)));
-  lcdPrint("measuring done");
+
+  for (int i = 0;i<10;i++){
+      lcdPrintLine("reading " + String(i+1) + "/10",0,0);
+     if (sensor.begin()){
+        isSensorOk = true;
+        break;
+     }
+     delay(2000);
+  }
+  
+  if (!isSensorOk){
+    return false;
+  }
+  
+  lcdPrintLine("reading temp...",0,0);
+  delay(1000);
+  temp = sensor.getCelsiusHundredths();
+  t = temp/100;
+  lcdPrintLine("reading hum...",0,0);
+  delay(1000);
+  h = sensor.getHumidityPercent();
+  lcdPrintLine("measuring done",0,0);
   return true;
 }
 
@@ -142,10 +150,10 @@ boolean sendDatas() {
   Serial.println(cmd);
   Serial.flush();
   if (Serial.find("OK")) {
-    lcdPrint("conn open");
+    lcdPrint("Connection open");
     delay(1000);
   }else{
-    lcdPrint("conn failed");
+    lcdPrint("Connection failed");
     delay(1000);
     return false;
   }
@@ -157,18 +165,18 @@ boolean sendDatas() {
   Serial.flush();
   isDataSent = false;
   if (Serial.find(">")) {
-    lcdPrint("con ready. sending.");
+    lcdPrint("Sending datas...");
     Serial.println(cmd);
     delay(100);
     if (Serial.find("OK")) {
-      status = "Success";
+      status = "Ok";
       isDataSent = true;
-      delay(5000);
+      //delay(5000);
     } else {
-      status = "datas transmitted";
+      status = "data sent";
     }
   } else {
-    status = "Connection timeout";
+    status = "timeout";
   }
   
   delay(1000);
@@ -181,11 +189,18 @@ boolean sendDatas() {
 }
 
 void lcdPrint(String msg) {
-  lcd.clear();
-  lcd.setCursor(0, 0);
-  lcd.print(msg);
+  oled.clear();
+  oled.setCursor(0, 0);
+  oled.setTextSize(1,1);        // 5x7 characters, pixel spacing = 1
+  oled.print(msg);
 }
-void lcdPrintLine(String msg, int line, int row) {
-  lcd.setCursor(row, line);
-  lcd.print(msg);
+
+void lcdPrintLine(String msg, int row, int column) {
+  oled.setTextSize(1, 1);
+  for (int i = 0; i< 128;i++){
+    oled.setCursor(row,i);
+    oled.print(" ");
+  }
+  oled.setCursor(row, column);        // move cursor to row 3, pixel column 10
+  oled.print(msg);
 }
